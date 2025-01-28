@@ -4,9 +4,6 @@ const readState = enum { rules, pages };
 const rule = struct { X: u32, Y: u32 };
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const alloc = gpa.allocator();
-    defer _ = gpa.deinit();
     var args = std.process.args();
     _ = args.skip();
     const filename = args.next() orelse {
@@ -19,18 +16,14 @@ pub fn main() !void {
     };
     defer file.close();
 
-    var line_buffer = std.ArrayList(u8).init(alloc);
-    defer line_buffer.deinit();
+    var line_buffer = try std.BoundedArray(u8, 1024).init(0);
     const reader = file.reader();
     const writer = line_buffer.writer();
     var state: readState = .rules;
 
-    var rules = std.ArrayList(rule).init(alloc);
-    var pages = std.ArrayList(u32).init(alloc);
-    var printed = std.ArrayList(u32).init(alloc);
-    defer rules.deinit();
-    defer pages.deinit();
-    defer printed.deinit();
+    var rules = try std.BoundedArray(rule, 2048).init(0);
+    var pages = try std.BoundedArray(u32, 256).init(0);
+    var printed = try std.BoundedArray(u32, 256).init(0);
 
     var rule_buffer: [2][]const u8 = undefined;
     var new_rule_ptr: *rule = undefined;
@@ -50,11 +43,11 @@ pub fn main() !void {
 
         switch (state) {
             .rules => {
-                if (line_buffer.items.len == 0) {
+                if (line_buffer.slice().len == 0) {
                     state = .pages;
                     continue;
                 }
-                var iter = std.mem.splitSequence(u8, line_buffer.items, "|");
+                var iter = std.mem.splitSequence(u8, line_buffer.slice(), "|");
                 if (iter.next()) |val| {
                     rule_buffer[0] = val;
                 } else {
@@ -66,7 +59,7 @@ pub fn main() !void {
                     return error.IllegalFormat;
                 }
                 new_rule_ptr = rules.addOne() catch |err| switch (err) {
-                    error.OutOfMemory => {
+                    error.Overflow => {
                         unreachable;
                     },
                 };
@@ -74,33 +67,33 @@ pub fn main() !void {
                 new_rule_ptr.Y = try std.fmt.parseInt(u32, rule_buffer[1], 10);
             },
             .pages => {
-                if (line_buffer.items.len == 0) {
+                if (line_buffer.slice().len == 0) {
                     break;
                 }
 
-                var iter = std.mem.splitSequence(u8, line_buffer.items, ",");
+                var iter = std.mem.splitSequence(u8, line_buffer.slice(), ",");
                 while (iter.next()) |page| {
                     current_page = try std.fmt.parseInt(u32, page, 10);
                     try pages.append(current_page);
                 }
                 var valid: bool = true;
-                for (pages.items) |p| {
-                    if (isValid(rules, pages, printed, p) == false) {
+                for (pages.slice()) |p| {
+                    if (isValid(rules.slice(), pages.slice(), printed.slice(), p) == false) {
                         valid = false;
                         break;
                     }
                     try printed.append(p);
                 }
                 if (valid) {
-                    result += pages.items[pages.items.len / 2];
+                    result += pages.slice()[pages.slice().len / 2];
                 } else {}
 
-                pages.clearRetainingCapacity();
-                printed.clearRetainingCapacity();
+                pages.clear();
+                printed.clear();
             },
         }
 
-        line_buffer.clearRetainingCapacity();
+        line_buffer.clear();
     }
     std.debug.print("{}\n", .{result});
 }
@@ -114,11 +107,11 @@ fn inSlice(comptime T: type, haystack: []const T, needle: T) bool {
     return false;
 }
 
-fn isValid(rules: std.ArrayList(rule), pages: std.ArrayList(u32), printed: std.ArrayList(u32), page: u32) bool {
-    for (rules.items) |r| {
+fn isValid(rules: []rule, pages: []u32, printed: []u32, page: u32) bool {
+    for (rules) |r| {
         if (r.Y == page) {
-            if (inSlice(u32, pages.items, r.X)) {
-                if (inSlice(u32, printed.items, r.X) == false) {
+            if (inSlice(u32, pages, r.X)) {
+                if (inSlice(u32, printed, r.X) == false) {
                     return false;
                 }
             }
