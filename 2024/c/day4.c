@@ -11,7 +11,6 @@ int test_part1(char **input, int row, int col, int dr, int dc) {
       return 0;
     }
   }
-
   return 1;
 }
 

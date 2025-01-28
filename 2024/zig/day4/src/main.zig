@@ -60,7 +60,7 @@ pub fn main() !void {
 
 const pattern = [_]u8{ 'X', 'M', 'A', 'S' };
 
-fn explore_direction(data: [][]u8, start: pos, h: horizontal, v: vertical) bool {
+fn explore_direction(data: [][]u8, start: pos, h: horizontal, v: vertical) u32 {
     var col: usize = undefined;
     var row: usize = undefined;
     for (1..4) |i| {
@@ -74,36 +74,36 @@ fn explore_direction(data: [][]u8, start: pos, h: horizontal, v: vertical) bool 
             .down => start.y + i,
             .ignore => start.y,
         };
-        if (data[row][col] != pattern[i]) return false;
+        if (data[row][col] != pattern[i]) return 0;
     }
-    return true;
+    return 1;
 }
 
 fn explore_around(data: [][]u8, start: pos) u32 {
     var rval: u32 = 0;
     if (start.x >= 3) {
         if (start.y >= 3) {
-            rval += if (explore_direction(data, start, .left, .up)) 1 else 0;
+            rval += explore_direction(data, start, .left, .up);
         }
         if (start.y + 3 < data.len) {
-            rval += if (explore_direction(data, start, .left, .down)) 1 else 0;
+            rval += explore_direction(data, start, .left, .down);
         }
-        rval += if (explore_direction(data, start, .left, .ignore)) 1 else 0;
+        rval += explore_direction(data, start, .left, .ignore);
     }
     if (start.x + 3 < data[0].len) {
         if (start.y >= 3) {
-            rval += if (explore_direction(data, start, .right, .up)) 1 else 0;
+            rval += explore_direction(data, start, .right, .up);
         }
         if (start.y + 3 < data.len) {
-            rval += if (explore_direction(data, start, .right, .down)) 1 else 0;
+            rval += explore_direction(data, start, .right, .down);
         }
-        rval += if (explore_direction(data, start, .right, .ignore)) 1 else 0;
+        rval += explore_direction(data, start, .right, .ignore);
     }
     if (start.y >= 3) {
-        rval += if (explore_direction(data, start, .ignore, .up)) 1 else 0;
+        rval += explore_direction(data, start, .ignore, .up);
     }
     if (start.y + 3 < data.len) {
-        rval += if (explore_direction(data, start, .ignore, .down)) 1 else 0;
+        rval += explore_direction(data, start, .ignore, .down);
     }
     return rval;
 }
