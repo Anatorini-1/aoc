@@ -22,14 +22,11 @@ pub fn main() !void {
     var state: readState = .rules;
 
     var rules = try std.BoundedArray(rule, 2048).init(0);
-    var pages = try std.BoundedArray(u32, 256).init(0);
-    var printed = try std.BoundedArray(u32, 256).init(0);
 
     var rule_buffer: [2][]const u8 = undefined;
     var new_rule_ptr: *rule = undefined;
-    var current_page: u32 = undefined;
-
-    var result: u32 = 0;
+    var result_part1: u32 = 0;
+    var result_part2: u32 = 0;
 
     while (true) {
         reader.streamUntilDelimiter(writer, '\n', 100) catch |err| switch (err) {
@@ -70,32 +67,68 @@ pub fn main() !void {
                 if (line_buffer.slice().len == 0) {
                     break;
                 }
-
-                var iter = std.mem.splitSequence(u8, line_buffer.slice(), ",");
-                while (iter.next()) |page| {
-                    current_page = try std.fmt.parseInt(u32, page, 10);
-                    try pages.append(current_page);
+                const r = try part1(line_buffer.slice(), rules.slice());
+                result_part1 += r;
+                if (r == 0) {
+                    result_part2 += try part2(line_buffer.slice(), rules.slice());
                 }
-                var valid: bool = true;
-                for (pages.slice()) |p| {
-                    if (isValid(rules.slice(), pages.slice(), printed.slice(), p) == false) {
-                        valid = false;
-                        break;
-                    }
-                    try printed.append(p);
-                }
-                if (valid) {
-                    result += pages.slice()[pages.slice().len / 2];
-                } else {}
-
-                pages.clear();
-                printed.clear();
             },
         }
 
         line_buffer.clear();
     }
-    std.debug.print("{}\n", .{result});
+    std.debug.print("Part 1: {}\n", .{result_part1});
+    std.debug.print("Part 2: {}\n", .{result_part2});
+}
+
+fn part2(line: []u8, rules: []rule) !u32 {
+    var printed = try std.BoundedArray(u32, 1000).init(0);
+    var pages = try std.BoundedArray(u32, 1000).init(0);
+    var iter = std.mem.splitSequence(u8, line, ",");
+    var current_page: u32 = undefined;
+    while (iter.next()) |page| {
+        current_page = try std.fmt.parseInt(u32, page, 10);
+        try pages.append(current_page);
+    }
+    var i: u32 = 0;
+    while (i < pages.len) {
+        if (pages.get(i) == 0) {
+            i += 1;
+            continue;
+        }
+        if (isValid(rules, pages.slice(), printed.slice(), pages.get(i))) {
+            try printed.append(pages.get(i));
+            pages.set(i, 0);
+            i = 0;
+        } else {
+            i += 1;
+        }
+    }
+    return printed.get(printed.len / 2);
+}
+fn part1(line: []u8, rules: []rule) !u32 {
+    var current_page: u32 = undefined;
+    var iter = std.mem.splitSequence(u8, line, ",");
+    var pages = try std.BoundedArray(u32, 1000).init(0);
+    var printed = try std.BoundedArray(u32, 1000).init(0);
+
+    while (iter.next()) |page| {
+        current_page = try std.fmt.parseInt(u32, page, 10);
+        try pages.append(current_page);
+    }
+    var valid: bool = true;
+    for (pages.slice()) |p| {
+        if (isValid(rules, pages.slice(), printed.slice(), p) == false) {
+            valid = false;
+            break;
+        }
+        try printed.append(p);
+    }
+    if (valid) {
+        return pages.get(pages.len / 2);
+    } else {
+        return 0;
+    }
 }
 
 fn inSlice(comptime T: type, haystack: []const T, needle: T) bool {
