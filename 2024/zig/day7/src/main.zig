@@ -27,7 +27,10 @@ pub fn main() !void {
     var result: u64 = undefined;
     var part1_res: u64 = 0;
     var part2_res: u64 = 0;
+    var c: u32 = 0;
     while (true) {
+        std.debug.print("{}\n", .{c});
+        c += 1;
         reader.streamUntilDelimiter(writer, '\n', 100) catch |err| switch (err) {
             error.EndOfStream => break,
             error.StreamTooLong => {
@@ -96,6 +99,7 @@ fn part2(result: u64, operands: []u32) !u64 {
     var current: u64 = undefined;
     var alloc = std.heap.GeneralPurposeAllocator(.{}){};
     var buffer = std.ArrayList(u8).init(alloc.allocator());
+    var tmp: u32 = undefined;
     defer buffer.deinit();
     perms: for (0..permutations) |permutation| {
         current = operands[0];
@@ -110,9 +114,11 @@ fn part2(result: u64, operands: []u32) !u64 {
                     current *= operands[operator + 1];
                 },
                 0b10 => {
-                    buffer.clearRetainingCapacity();
-                    try std.fmt.format(buffer.writer(), "{}{}", .{ current, operands[operator + 1] });
-                    current = try std.fmt.parseInt(u64, buffer.items, 10);
+                    tmp = operands[operator + 1];
+                    while (tmp > 0) {
+                        current = current * 10 + tmp % 10;
+                        tmp /= 10;
+                    }
                 },
                 else => {
                     continue :perms;
