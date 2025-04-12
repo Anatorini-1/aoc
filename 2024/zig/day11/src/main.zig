@@ -1,47 +1,7 @@
 const std = @import("std");
+
 const ArrayList = std.ArrayList;
-
-const TS = struct {
-    buff: []Node,
-    fn init(alloc: std.mem.Allocator) !TS {
-        return TS{
-            .buff = try alloc.alloc(Node, 100),
-        };
-    }
-};
-test "Dupa" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    const ts = try TS.init(arena.allocator());
-    _ = ts;
-    arena.deinit();
-}
-
-const Node = struct {
-    prev: ?*Node,
-    next: ?*Node,
-    val: u64,
-    pub fn print(self: Node) void {
-        var _self = self;
-        var current: ?*Node = &_self;
-        while (current) |n| {
-            std.debug.print("{d}", .{n.val});
-            if (n.next) |_| {
-                std.debug.print(" -> ", .{});
-            }
-            current = n.next;
-        }
-        std.debug.print("\n", .{});
-    }
-    pub fn len(self: *Node) u32 {
-        var length: u32 = 0;
-        var current: ?*Node = self;
-        while (current) |c| {
-            length += 1;
-            current = c.next;
-        }
-        return length;
-    }
-};
+const Stones = std.hash_map.AutoHashMap(i64, i64);
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -64,97 +24,101 @@ pub fn main() !void {
         '\n',
         null,
     );
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+
+    var stones = Stones.init(alloc);
+    var diff = Stones.init(alloc);
+    var strbuff = ArrayList(u8).init(alloc);
+    var numbuff: i64 = undefined;
+    defer stones.deinit();
+    defer diff.deinit();
+    defer strbuff.deinit();
+
     var iter = std.mem.splitSequence(u8, line_buffer.items, " ");
-    var numbuff: u64 = try (std.fmt.parseInt(u32, iter.next() orelse unreachable, 10));
-    var head = try arena.allocator().create(Node);
-    head.next = null;
-    head.prev = null;
-    head.val = numbuff;
-
-    var current: ?*Node = head;
-
     while (iter.next()) |number| {
-        numbuff = try std.fmt.parseInt(u64, number, 10);
-        if (current) |c| {
-            c.next = try arena.allocator().create(Node);
-            if (c.next) |next| {
-                next.prev = c;
-                next.next = null;
-                next.val = numbuff;
-                current = next;
-            }
-        }
+        numbuff = try std.fmt.parseInt(i64, number, 10);
+        try stones.put(numbuff, 1);
     }
     line_buffer.clearRetainingCapacity();
-    var batch: BatchAlloc = try BatchAlloc.init(arena.allocator());
 
-    for (0..25) |_| {
-        try look(head, &batch, &line_buffer);
+    for (0..75) |_| {
+        try look(
+            &stones,
+            &diff,
+            &strbuff,
+        );
     }
-    std.debug.print("{d}\n", .{head.len()});
-    arena.deinit();
+
+    var rval: i64 = 0;
+    var iter2 = stones.iterator();
+    while (iter2.next()) |e| {
+        rval += e.value_ptr.*;
+    }
+    std.debug.print("Result: {}\n", .{rval});
 }
 
-const buffer_size = 100;
-const BatchAlloc = struct {
-    alloc: std.mem.Allocator,
-    buffer: []Node,
-    pos: usize,
-    pub fn get(self: *BatchAlloc) !*Node {
-        if (self.pos == buffer_size) {
-            self.buffer = try self.alloc.alloc(Node, buffer_size);
-            self.pos = 1;
-            return &self.buffer[0];
+fn printStones(stones: Stones) void {
+    std.debug.print("-------------\n", .{});
+    var iter = stones.keyIterator();
+    while (iter.next()) |kptr| {
+        const key = kptr.*;
+        if (stones.get(key) == 0) continue;
+        std.debug.print("{}:{}\n", .{ key, stones.get(key) orelse 0 });
+    }
+    std.debug.print("-------------\n", .{});
+}
+
+fn addStone(statee: *Stones, key: i64, val: i64) !void {
+    const diff_count = statee.get(key) orelse 0;
+    try statee.put(key, val + diff_count);
+}
+
+fn applyDiff(state: *Stones, diff: *Stones) !void {
+    var iter = diff.iterator();
+    while (iter.next()) |e| {
+        try addStone(state, e.key_ptr.*, e.value_ptr.*);
+    }
+}
+
+fn look(
+    state: *Stones,
+    diff: *Stones,
+    strbuff: *ArrayList(u8),
+) !void {
+    var strlen: usize = 0;
+    var iter = state.keyIterator();
+    var stone: i64 = undefined;
+    var stone_count: i64 = undefined;
+    var num: i64 = undefined;
+
+    while (iter.next()) |kptr| {
+        stone = kptr.*;
+        stone_count = state.get(stone) orelse 0;
+        if (stone_count == 0) continue;
+
+        if (stone == 0) {
+            try addStone(diff, 1, stone_count);
+            try addStone(diff, 0, -stone_count);
+            continue;
+        }
+        strbuff.clearRetainingCapacity();
+        try std.fmt.format(strbuff.writer(), "{}", .{stone});
+        strlen = strbuff.items.len;
+        if (strlen % 2 == 0) {
+            num = try std.fmt.parseInt(i64, strbuff.items[0 .. strlen / 2], 10);
+            try addStone(diff, num, stone_count);
+            try addStone(diff, stone, -stone_count);
+
+            num = try std.fmt.parseInt(i64, strbuff.items[strlen / 2 .. strlen], 10);
+            const diff_count = diff.get(num) orelse 0;
+            try diff.put(num, stone_count + diff_count);
         } else {
-            self.pos += 1;
-            return &self.buffer[self.pos - 1];
+            num = stone * 2024;
+            try addStone(diff, num, stone_count);
+            try addStone(diff, stone, -stone_count);
+
+            continue;
         }
     }
-    pub fn init(alloc: std.mem.Allocator) !BatchAlloc {
-        return BatchAlloc{
-            .alloc = alloc,
-            .buffer = try alloc.alloc(Node, 100),
-            .pos = 0,
-        };
-    }
-};
-
-fn look(head: *Node, alloc: *BatchAlloc, buff: *std.ArrayList(u8)) !void {
-    var current: ?*Node = head;
-    var new_node: *Node = undefined;
-    var num: u64 = undefined;
-
-    var buff_len: usize = undefined;
-
-    while (current) |c| {
-        buff.clearRetainingCapacity();
-        try std.fmt.format(buff.writer(), "{d}", .{c.val});
-        buff_len = buff.items.len;
-
-        if (c.val == 0) {
-            c.val = 1;
-            current = c.next;
-        } else if (buff_len % 2 == 0) {
-            num = try std.fmt.parseInt(
-                u64,
-                buff.items[0..(buff_len / 2)],
-                10,
-            );
-            c.val = num;
-            num = try std.fmt.parseInt(
-                u64,
-                buff.items[(buff_len / 2)..buff_len],
-                10,
-            );
-            new_node = try alloc.get();
-            new_node.val = num;
-            new_node.next = c.next;
-            c.next = new_node;
-            current = new_node.next;
-        } else {
-            c.val = c.val * 2024;
-            current = c.next;
-        }
-    }
+    try applyDiff(state, diff);
+    diff.clearRetainingCapacity();
 }
